@@ -95,7 +95,6 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   ## create a track ID synonymous with how the files are named:
   metafile$ID <- paste(metafile[[year]], "_", metafile[[colony]], "_", metafile[[ring]], "_", format(metafile$end,"%Y-%m-%d"),sep="")
 
-  ## error: Identifying potential mistakes in deployment/retrieval date
   Date.diff <-  metafile$end - metafile$start; if( length(metafile$ID[which(Date.diff <= 0)]) != 0 ) 
       stop('Date of retrieval should be later than date of deployment')
   
@@ -103,9 +102,8 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   
     for (i in 1:files) { ## Loop delineating trips on each file i.e. GPS deployement
     
-  ## Partitionning between two types of GPS-based file (two formats; 1GEN & CHIP-PATCH)
-  ## Need to have a column specifying GPS type in the metadata file, otherwise, focusing
-  ## on 1GEN
+  ## Partitionning between two types of GPS-based file
+  ## Need to have a column specifying GPS type in the metadata file
   GPSType <- metafile$GPSType[which(metafile$ID == gsub(".csv", "", file.name[i]))]
   if(identical(GPSType, character(0))) {stop("You need to have a valid GPSType. See details")}
   
@@ -258,7 +256,7 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
                                 units = ("min")) 
     
     trip.matrix <- data.matrix(test[,c("Longitude","Latitude")], rownames.force = NA) #creates two column matrix of lat and long for trip trackDistance function
-    distbp <- trackDistance(trip.matrix, longlat = TRUE) #calculate distance between each GPS point, into vector
+    distbp <- trackDistance(trip.matrix, longlat = TRUE) #calculates distance between each GPS point, into vector
     TDist <- sum(distbp)   
     test$TripDist <- TDist
     
@@ -291,12 +289,12 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   alltrips$BegPoint <- trip.Bincomplete$FR[match(alltrips$birdTrip, trip.Bincomplete$birdTrip)]
   alltrips$EndPoint <- trip.Eincomplete$ER[match(alltrips$birdTrip, trip.Eincomplete$birdTrip)]
   
-      if ( Complete == TRUE ) { ## Need a condition, for filtering by completness; Condition T or F
-  alltrips <- subset(alltrips, alltrips$BegPoint == "colony")  # get rid of incomplete trips
-  alltrips <- subset(alltrips, alltrips$EndPoint == "colony")  # get rid of incomplete trips
+      if ( Complete == TRUE ) { # get rid of incomplete trips
+  alltrips <- subset(alltrips, alltrips$BegPoint == "colony")  
+  alltrips <- subset(alltrips, alltrips$EndPoint == "colony")
     }
   
-      if (!is.null(MinTripDur)) { ## Having a function first to calculate trip duration and then filtering by a selected treshold
+      if (!is.null(MinTripDur)) {
   alltrips <- subset(alltrips, alltrips$TripLength >= MinTripDur)
     }
   
@@ -312,9 +310,9 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   alltrips$ColLat <- CLat
       }
   
-  allbirds.list[[i]] <- alltrips # put all of these cut down frames in a list
+  allbirds.list[[i]] <- alltrips
   rm(alltrips)
-  allbirds <- do.call(rbind, allbirds.list) # convert the list into one big dataframe
+  allbirds <- do.call(rbind, allbirds.list)
   cat("GPS file = ", i, "\n")
   
     }

@@ -477,6 +477,6 @@ Prior to the FPT analysis, all tracks were regularized in space, in order to acc
 potential speed bias (Fauchald and Tveraa 2006). Optimal step length could be evaluated through
 a series of scenarios comparing the number of locations from original and rediscretized
 tracks. The “optimal step length” is a parameter that could be defined as minimizing differences,
-in terms of numbers of relocations, with the original time-regularized tracks.Here, the function **SensSpacing()** performs the 
+in terms of numbers of relocations, with the original time-regularized tracks.Here, the function **SensSpacing()** performs a bootstrap to vizualize the intrinsic variation between each scenario. 
 
 

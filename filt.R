@@ -107,6 +107,7 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   ## Need to have a column specifying GPS type in the metadata file, otherwise, focusing
   ## on 1GEN
   GPSType <- metafile$GPSType[which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  if(identical(GPSType, character(0))) {stop("You need to have a valid GPSType. See details")}
   
   ## This line remove the 6 first unecassary lines in the CHIP-PATCH GPS Type
   ## The 1GEN is read as it is

@@ -1,0 +1,482 @@
+---
+title: "Tutorial Movement"
+author: "Philip Bertrand"
+date: "11/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warnings = FALSE, message = FALSE)
+```
+
+This document is intended to provide basic information on how 
+to use relevant functions for raw movement data. These have 5 objectives;
+
+  1) Delineating tracks from raw GPS data
+  2) Plotting those delineated tracks
+  3) Diagnostic tool for spacing pattern for performing FPT analyses
+  4) Tools for performing FPT analysis from delineated tracks
+  5) Plotting the resulting ARS from the FPT analysis
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/R/DummyMeta/")
+metname <- c("METADATA_dummy.csv")
+metafile <- read.csv(paste(pathM, metname, sep=""), sep = ",", header=T, na.strings=c("","NA"))
+```
+
+## Data Format
+
+First, a metadata file should be created, having some standardized column name that would facilitate the use of the script.
+
+ * **Colony**: Is the colony name
+ * **Clongitude**: The colony longitude (WGS84)
+ * **Clatitude**: The colony latitude (WGS84)
+ * **Year**: The year of the capture
+ * **MetalRing**: The unique identifier of the captured bird
+ * **GPSType**: The type of GPS used
+ * **FIX**: The programmed sampling interval of the GPS
+ * **Deployment**: The standardized deployment date
+ * **Recapture**: The standardized recapture date
+ * **UTC_Deployment**: Time of the deployment, standardized in UTC
+ * **UTC_Retrieval**: Time of the recapture, standardized in UTC
+
+```{r cars, message=FALSE, warning=FALSE}
+head(metafile)
+```
+
+## Trip Delineation
+
+The main function of this package is to delineate raw GPS data into different trips. The function has in total 6 options to chose from, which will impact to a varying extent the final outputs, as the following example:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap = NULL,
+                 colony = NULL, year = NULL, ring = NULL, tdep = NULL, trecap = NULL, 
+                 timezone = NULL, speedTresh = NULL, FixInt = NULL, 
+                 BuffColony = NULL, MinTripDur = NULL, Complete = FALSE,
+                 Interpolate = FALSE, splt = TRUE) {
+
+  if (class(metname) != "character") 
+    stop("metname should be a character")
+  if (class(ddep) != "character") 
+    stop("ddep should be a character")
+  if (class(drecap) != "character") 
+    stop("drecap should be a character")
+  if (class(colony) != "character") 
+    stop("colony should be a character")
+  if (class(year) != "character") 
+    stop("year should be a character")
+  if (class(ring) != "character") 
+    stop("ring should be a character")
+  if (class(tdep) != "character") 
+    stop("tdep should be a character")
+  if (class(trecap) != "character") 
+    stop("trecap should be a character")
+  if (class(timezone) != "character") 
+    stop("the timezone should be a character")
+  if (!is.null(speedTresh) & class(speedTresh) != "numeric") 
+    stop("the speed treshold should be numeric")
+  if (!is.null(FixInt) & class(FixInt) != "numeric") 
+    stop("the time interval between successive fixes should be numeric")
+  if (!is.null(BuffColony) & class(BuffColony) != "numeric") 
+    stop("the buffer size should be numeric")
+  if (!is.null(MinTripDur) & class(MinTripDur) != "numeric") 
+    stop("the minimum time duration (min) that a trip should have should be numeric")
+  if (Complete != TRUE & Complete != FALSE)
+    stop("Logical: Completness function should be approved (TRUE) or delcine (FALSE)")
+  if (!is.null(FixInt) & class(FixInt) != "numeric") 
+    stop("the time interval between successive fixes should be numeric")
+
+  pack <- c("chron", "adehabitatHR", "plyr", "trip", "lubridate")
+  
+  if (length(setdiff(pack, rownames(installed.packages()))) > 0) {
+    install.packages(setdiff(pack, rownames(installed.packages())))  
+  }
+  
+  sapply(pack, function(p) {require(p, quietly=T, character.only = T)})
+  
+  ## Importing file's names
+  Filext <- ".csv"
+  file.name <- list.files(pathF)[grep(Filext,list.files(pathF))]; rm(Filext)
+  files   <- length(file.name)
+  
+  ## Importing metadata; need to remove path to pathM, no permission is denied
+  metafile <- read.csv(paste(pathM, metname, sep=""), sep = ",", header=T, na.strings=c("","NA"))
+  
+  ## define from when the tracks should begin and end: when logger was deployed/retrieved
+  metafile$start <- as.POSIXct(strptime(paste (as.character(metafile[[ddep]]),
+                     as.character(metafile[[tdep]])),"%Y-%m-%d %H:%M", tz=timezone), timezone)
+  metafile$end   <- as.POSIXct(strptime(paste (as.character(metafile[[drecap]]),
+                     as.character(metafile[[trecap]])),"%Y-%m-%d %H:%M", tz=timezone), timezone)
+  
+  ## create a track ID synonymous with how the files are named:
+  metafile$ID <- paste(metafile[[year]], "_", metafile[[colony]], "_", metafile[[ring]], "_", format(metafile$end,"%Y-%m-%d"),sep="")
+
+  ## error: Identifying potential mistakes in deployment/retrieval date
+  Date.diff <-  metafile$end - metafile$start; if( length(metafile$ID[which(Date.diff <= 0)]) != 0 ) 
+      stop('Date of retrieval should be later than date of deployment')
+  
+  allbirds.list <- list()
+  
+    for (i in 1:files) { ## Loop delineating trips on each file i.e. GPS deployement
+    
+  ## Partitionning between two types of GPS-based file (two formats; 1GEN & CHIP-PATCH)
+  ## Need to have a column specifying GPS type in the metadata file, otherwise, focusing
+  ## on 1GEN
+  GPSType <- metafile$GPSType[which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  
+  ## This line remove the 6 first unecassary lines in the CHIP-PATCH GPS Type
+  ## The 1GEN is read as it is
+  if(GPSType != "Catlog" & GPSType != "IGotU") {stop("the GPS type should be either Catlog or IGotU")}
+  if(GPSType == "Catlog") { bird <- read.csv(paste(pathF, file.name[i], sep=""), sep = ",", skip = 6) } else 
+    { bird <- read.csv(paste(pathF, file.name[i], sep=""), sep = ",") }
+  
+  ## This assume to have a meaningful file.name, will be used thereafter as trackID
+  bird$trackID <- unlist(strsplit(file.name[i], "[.]"))[1]
+  
+  ## extract start and end times for track, needs to be linked to a metadata file
+  ## should implement an object, for specifying start, end & timezone
+  start <- metafile$start[which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  end <- metafile$end[which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  int <- interval(start, end, tzone = timezone)
+  
+  ## Extract colony corrdinates and building of a data.frame
+  ## Will be used later in the script for colony-location distance
+  CLong <- metafile$Clongitude[which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  CLat <- metafile$Clatitude[which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  CLL <- cbind(CLong, CLat)
+  
+  ## make sure date in the right format - ymd; creating the time object, then ordering since
+  ## sometimes, data are not in chronological order
+  mdy <- mdy(bird$Date, quiet = TRUE)
+  ymd <- ymd(bird$Date, quiet = TRUE)
+  mdy[is.na(mdy)] <- ymd[!is.na(ymd)] # give the working one precedence
+  bird$Date <- format(mdy, "%Y/%m/%d")
+  bird$Time <- chron(times=bird$Time)
+  bird$datetime <- strptime(paste(gsub("/", "-", bird$Date), bird$Time), format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+  bird <- bird[order(bird$datetime , decreasing = FALSE ),]
+  
+  ## now subset to points within this time start/end window
+  bird <- bird[bird$datetime %within% int, ]
+  
+  ## overwrite device speed data, in m/s
+  trip.matrix <- data.matrix(bird[,c("Longitude","Latitude")], rownames.force = NA) #creates two column matrix of lat and long for trip trackDistance function
+  between.point.distances <- trackDistance(trip.matrix, longlat = TRUE) #calculate distance in km between each GPS point, into vector
+  bird$PointDist <- c(0, between.point.distances) #dist in km
+  bird$TimeElapsed <- 0 #create empty column to fill with for loop
+  
+  for (k in 2:NROW(bird)){
+      bird$TimeElapsed[k] <- difftime(bird$datetime[k], bird$datetime[k-1], units = "secs") #time diff in secs
+    }
+  
+  bird$Speed <- (bird$PointDist * 1000)/bird$TimeElapsed ## m/s                                             
+  
+  if (!is.null(speedTresh)) {
+      bird <- subset(bird, bird$Speed < speedTresh)
+    }
+  
+  ## Extracting GPS interval, determined from the metadata
+  Sres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[i]))])*60
+  Mres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[i]))])
+  
+  if(Interpolate == TRUE) {
+    
+    refda <- min(bird$datetime)
+    Nbird <- as.ltraj(xy = data.frame(bird$Longitude, bird$Latitude), date = as.POSIXct(bird$datetime), id = bird$trackID)
+    wost_NA <- setNA(Nbird,refda,Mres,units="min")
+    wost_demo <- sett0(wost_NA,refda,Mres,units="min")
+    Nbird <- redisltraj(na.omit(wost_demo), u = Sres, type = "time") 
+  
+    if(!is.null(FixInt)) {
+     if(nrow(Nbird[[1]]) > 1){ ### Standardized as matter of time treshold
+      if(Sres != FixInt) {
+       if( FixInt < max(metafile$FIX)  ) warning("your selected treshold for ", print(bird$trackID[1]), " is smaller than the greater interval in your sampled tracks - meaning that your are creating points")
+        Nbird <- subsample(Nbird, FixInt, units = c("min"))
+       }
+      }
+     }
+    
+    Nbird <- ld(Nbird)
+    bird <- data.frame(datetime = Nbird$date, Latitude = Nbird$y, Longitude = Nbird$x, trackID = Nbird$id)
+    
+    } else { bird <- bird[, c("datetime", "Latitude", "Longitude", "trackID")] }
+  
+  ## get distance flown from the colony
+  trip.matrix <- data.matrix(bird[,c("Longitude","Latitude")], rownames.force = NA) #creates two column matrix of lat and long for trip trackDistance function
+  bird$ColonyDist <- spDistsN1(trip.matrix, CLL, longlat = TRUE) #calculate distances between GPS points and initial GPS point in km
+  
+  if(is.null(BuffColony)) {
+    bird$ColonyorTrip <- c("trip")
+    bird$tripID <- 1
+    } else {
+
+  ## Setting buffer treshold
+  bird$ColonyorTrip <- ifelse(bird$ColonyDist > BuffColony, "trip","colony") #in km
+  
+  ## set all colony points to 0
+  bird$ColonyDist[which(bird$ColonyorTrip == "colony")] <- 0
+  
+  ## add trip number
+  tripID <- 1
+  nRows <- length(bird$ColonyorTrip) - 1
+  bird$tripID <- 0
+  
+  ### this big for loop numbers all trips, including the one colony point before
+  ### and after the last trip point
+  if(bird$ColonyorTrip[1] == "colony" && bird$ColonyorTrip[2] == "trip") {bird$tripID[1] <- tripID}  else {bird$tripID[1] <- 0}
+  if(bird$ColonyorTrip[1] == "trip") {bird$tripID[1] <- tripID}
+  
+  for (j in 2:nRows) {
+    if(bird$ColonyorTrip[j] == "colony" && bird$ColonyorTrip[j] != bird$ColonyorTrip[j+1] &&
+       bird$ColonyorTrip[j-1] != bird$ColonyorTrip[j+1]) {
+      tripID <- tripID + 1
+    } else {bird$tripID[j] <- tripID}
+    if(bird$ColonyorTrip[j] == "trip" | bird$ColonyorTrip[j] != bird$ColonyorTrip[j-1]
+       | bird$ColonyorTrip[j] != bird$ColonyorTrip[j+1]) {
+      bird$tripID[j] <- tripID
+    } else {
+      bird$tripID[j] <- 0} 
+    if(bird$ColonyorTrip[nRows+1] == "trip") {
+      bird$tripID[nRows+1] <- tripID ## set the last row correctly
+     }
+    }
+   }
+  
+  ## Creating unique ID variable
+  bird$birdTrip <- paste(bird$trackID, bird$tripID, sep = "_")
+  
+  ## Getting rid of colony points; perhaps YES or NO in the function()
+  bird <- subset(bird, bird$tripID > 0)
+  
+  ## Loop estimating the number of points per trip
+  p.list <- list()
+  
+  for (o in 1:length(unique(bird$tripID))) {
+    
+    test <- subset(bird, bird$tripID == unique(bird$tripID)[o])
+    
+    test$TripLength <- difftime(max(test$datetime),min(test$datetime),   #calculate time elapsed between start and end
+                                units = ("min")) 
+    
+    trip.matrix <- data.matrix(test[,c("Longitude","Latitude")], rownames.force = NA) #creates two column matrix of lat and long for trip trackDistance function
+    distbp <- trackDistance(trip.matrix, longlat = TRUE) #calculate distance between each GPS point, into vector
+    TDist <- sum(distbp)   
+    test$TripDist <- TDist
+    
+    tripDurs <- as.data.frame(table(test$birdTrip))
+    test$nPoints <- tripDurs$Freq[match(test$birdTrip, tripDurs$Var1)]
+    test$maxDist <- max(test$ColonyDist, na.rm = TRUE)
+    
+    ## Calculation of the proportion of points over land
+    ## Would require a appropriate shapefile for the calculation
+    #pts <- SpatialPointsDataFrame(test[,c("Longitude", "Latitude")], test,proj4string=crdref)
+    #pts$Land <- !is.na(over(pts, as(s, "SpatialPolygons")))
+    #pts$Prop.Land <- mean(pts$Land)
+    #test <- as.data.frame(pts)
+    
+    p.list[[o]] <- test  
+    rm(test)
+    
+  }
+  
+  alltrips <- do.call(rbind, p.list)
+  rm(p.list)
+  
+  notime <- alltrips[, c("birdTrip", "ColonyDist","ColonyorTrip")]
+  
+  trip.Bincomplete <- ddply(notime, .(birdTrip), function(x) x[1, ]) ## gets the first point for each trip
+  colnames(trip.Bincomplete) <- c("birdTrip", "ColonyDist", "FR")
+  trip.Eincomplete <- ddply(notime, .(birdTrip), function(x) x[nrow(x), ]) ## gets the last point for each trip
+  colnames(trip.Eincomplete) <- c("birdTrip", "ColonyDist", "ER")
+  
+  alltrips$BegPoint <- trip.Bincomplete$FR[match(alltrips$birdTrip, trip.Bincomplete$birdTrip)]
+  alltrips$EndPoint <- trip.Eincomplete$ER[match(alltrips$birdTrip, trip.Eincomplete$birdTrip)]
+  
+      if ( Complete == TRUE ) { ## Need a condition, for filtering by completness; Condition T or F
+  alltrips <- subset(alltrips, alltrips$BegPoint == "colony")  # get rid of incomplete trips
+  alltrips <- subset(alltrips, alltrips$EndPoint == "colony")  # get rid of incomplete trips
+    }
+  
+      if (!is.null(MinTripDur)) { ## Having a function first to calculate trip duration and then filtering by a selected treshold
+  alltrips <- subset(alltrips, alltrips$TripLength >= MinTripDur)
+    }
+  
+    ## Adding some data
+  alltrips$ring <- metafile$MetalRing[match(alltrips$trackID, metafile$ID)]
+  alltrips$colony <- metafile$Colony[match(alltrips$ring, metafile$Metal.ring)]
+  alltrips$stage <- metafile$Phenology[match(alltrips$trackID, metafile$ID)]
+  #alltrips$sex <- metafile$Sex[match(alltrips$trackID, metafile$ID)]
+  alltrips$Nest <- metafile$NestID[match(alltrips$trackID, metafile$ID)]
+  alltrips$Year <- metafile$Year[match(alltrips$trackID, metafile$ID)]
+  alltrips$GPSw <- metafile$GPSWeigth[match(alltrips$trackID, metafile$ID)]
+  alltrips$ColLong <- CLong
+  alltrips$ColLat <- CLat
+  
+  allbirds.list[[i]] <- alltrips # put all of these cut down frames in a list
+  rm(alltrips)
+  allbirds <- do.call(rbind, allbirds.list) # convert the list into one big dataframe
+  cat("GPS file = ", i, "\n")
+  
+    }
+    
+  if(is.null(BuffColony)) {
+    warning("No buffer has been drawn around the colony, meaning that trips have not been delineated. Resuming in one single track for each bird", call. = F)
+      }
+  
+  if(splt == TRUE) { allbirds <- split(allbirds, allbirds$birdTrip)}
+  
+  return(allbirds)
+  
+}
+
+```
+
+Before launching the script, one would need to define important prior arguments;
+
+* **pathF**: Is the path to the folder containing the tracking files
+* **pathM**: Is the path to the folder containing the metadata file
+* **metname**: Is the name of the metadata file that is located in **pathM**
+* **timezone**: is the timezone used for the GPS recording (e.g. GMT)
+* **speedTresh**: this value corresponds to the maximum value of speed tolerated. This value could be use to remove suspicious high speed in the tracks. The value should be in meter per second
+* **ddep**: column's name of the metadata for the date of deployement. Format could be variable but consistent among birds. The function use the function ymd() and mdy() for finding the dates, from the **lubridate** package
+* **drecap**: date of recapture. Same format as **ddep**
+* **colony**: column's name of the metadata for the bird's colony affiliation
+* **year**: column's name of the metadata for the year of sampling
+* **ring**: column's name of the metadata for the bird's unique identyfiers
+* **tdep**: UTC time of deployment (e.g. HH:MM:SS)
+* **trecap**: UTC time of retrieval (e.g. HH:MM:SS)
+* **BuffColony**: radius (km) used to delimiter colony area. Convenient if one wants to segment as function of distance of the colony
+* **MinTripDur**: minimum time that a trip should be.
+* **Complete**: binary. Should only be completed trip kept? Complete here means that the first and the last locations of the trip are within the **BuffColony** area
+* **Interpolate**: binary. Should missing location be interpolate? Value based on the **FIX** value
+* **splt**: binary. This option let you split the final object into an array instead of a data frame. In case the **splt** is set to **TRUE**, the object can be unsplitted thereafter using **do.call(rbind, object)**
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/R/Tracks/")
+pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/R/DummyMeta/")
+metname <- c("METADATA_dummy.csv")
+timezone <- c("GMT")
+
+```
+
+And here's the basic usage;
+
+```{r, echo= F, results = "hide", message=FALSE, warning=FALSE}
+
+f <- filt(pathF, pathM, metname, timezone, speedTresh = 20, ddep = "Deployment",
+          drecap = "Recapture", colony = "Colony", year = "Year", ring = "MetalRing", 
+          tdep = "UTC_Deployment", trecap = "UTC_Retrieval",
+          BuffColony = 0.2, MinTripDur = 60, Complete = TRUE, 
+          Interpolate = T, splt = T)
+
+```
+
+```{r, echo= T, results = "hide", message=FALSE, warning=FALSE}
+
+filt(pathF, pathM, metname, timezone, speedTresh = 20, ddep = "Deployment",
+          drecap = "Recapture", colony = "Colony", year = "Year", ring = "MetalRing", 
+          tdep = "UTC_Deployment", trecap = "UTC_Retrieval",
+          BuffColony = 0.2, MinTripDur = 60, Complete = TRUE, 
+          Interpolate = T, splt = T)
+
+```
+
+If you want to add additional data to the final objects, these one needs to be attached from the metadata, as:
+
+ * **Phenology**: Binary (Incubation/Chick Rearing). Reproduction period where the tracking period occured
+  * **GPSWeight**: The weight of the GPS used
+  
+  ## Plotting the delineated trips
+  
+The script has now produced one object containing the segmented trips. One way to visualize those trips is to pass them into the **plottingMAP()** function;
+
+```{r, echo= F, results = "hide", message=FALSE, warning=FALSE}
+
+plotMAP <- function(allbirds, pmap = FALSE, path = NULL, w = 12, h = 12,
+                units = "cm", ColLong = NULL, ColLat = NULL) {
+  
+  if (is.null(path))
+    stop("path? You need to indicate where to save the figures")
+  
+  pack <- c("ggOceanMaps", "ggplot2", "ggspatial")
+  
+  if (length(setdiff(pack, rownames(installed.packages()))) > 0) {
+    install.packages(setdiff(pack, rownames(installed.packages())))  
+  }
+  
+  sapply(pack, function(p) {require(p, quietly=T, character.only = T)})
+  
+  allbirds <- do.call(rbind, allbirds)
+  
+  for(i in 1:length(unique(allbirds$birdTrip))){
+    
+    bt <- unique(allbirds$birdTrip)[i]
+    
+    bird <- subset(allbirds, allbirds$birdTrip == bt)
+    
+   if (is.null(ColLong) | is.null(ColLat)) {
+    warning("You have no coordinate associated to your colony. Location will be automatically picked up from your dataset")
+    
+    ColonyPos <- subset(bird, bird$ColonyorTrip == "colony")
+     
+    m <- basemap(limits = c(min(bird$Longitude), max(bird$Longitude), 
+          min(bird$Latitude), max(bird$Latitude)), bathymetry = TRUE, 
+          glaciers = TRUE, bathy.style = "poly_greys") +
+        geom_spatial_path(data = bird, aes(x = Longitude, y = Latitude), color = "light gray") +
+        geom_spatial_point(data = bird, aes(x = Longitude, y = Latitude), color = "purple") +
+        geom_spatial_point(data = ColonyPos[1, ], aes(x = Longitude, y = Latitude), color = "blue")
+    
+    } else {
+      
+    m <- basemap(limits = c(min(bird$Longitude), max(bird$Longitude), 
+          min(bird$Latitude), max(bird$Latitude)), bathymetry = TRUE, 
+          glaciers = TRUE, bathy.style = "poly_greys") +
+        geom_spatial_path(data = bird, aes(x = Longitude, y = Latitude), color = "light gray") +
+        geom_spatial_point(data = bird, aes(x = Longitude, y = Latitude), color = "purple") +
+        geom_spatial_point(data = bird, aes(x = ColLong[1], y = ColLat[1]), color = "blue")
+      
+    }
+    
+    g <- paste0('MAP_', bt, '.png')
+    ggsave(m, filename = g, bg = "transparent", path = path, width = w, height = h, units = units) 
+    
+    if(pmap == TRUE){ return(m + ggtitle(g))}
+    
+    ColonyPos <- NULL
+    
+    } 
+}
+
+```
+
+```{r, echo=F, message=FALSE, warning=FALSE}
+
+path <- c("C:/Users/philip/Desktop/test")
+
+```
+
+The function plots each trip with the colony (blue) distinctive of the trip's locations (purple). The function also use the bathymetry data from the OceanPolt package, and has 4 objects;
+
+* **pmap**: binary. If TRUE, a map per individual is generated in R. Otherwise, the figures are only saved at the **path**
+* **path**: the directory where the figures will be saved
+* **ColLong**: Longitude of the colony
+* **ColLat**: Latitude of the colony
+
+The script codes now for plotting only the first bird from the splitted object;
+
+```{r, echo=T, message=FALSE, warning=FALSE}
+
+plotMAP(f[1], pmap = T, path, ColLong = f[1]$ColLong, ColLat = f[1]$ColLat)
+
+```
+
+## Spacing pattern for FPT analysis
+
+Prior to the FPT analysis, all tracks were regularized in space, in order to account for
+potential speed bias (Fauchald and Tveraa 2006). Optimal step length could be evaluated through
+a series of scenarios comparing the number of locations from original and rediscretized
+tracks. The “optimal step length” is a parameter that could be defined as minimizing differences,
+in terms of numbers of relocations, with the original time-regularized tracks.Here, the function **SensSpacing()** performs the 
+
+

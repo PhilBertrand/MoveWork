@@ -13,11 +13,6 @@
 #### @timezone is the time zone of your GPS file and metadata
 #### @return allbirds, all trips delineated according to certain filters
 
-# pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/R/Tracks/")
-# pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/R/DummyMeta/")
-# metname <- c("METADATA_dummy.csv")
-# timezone <- c("GMT")
-
 pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/allspecies/")
 pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/metadata/")
 metname <- c("meta_bjorn.csv")
@@ -27,20 +22,22 @@ timezone <- c("GMT")
 ## need slots for colony, deployement, recapture, utc_recap, utc_dep, year, ring,
 ## longitude, latitude
 
-f <- filt(pathF, pathM, metname, timezone, speedTresh = 22.222, ddep = "deployment",
-          drecap = "recapture", colony = "colony", year = "year", ring = "ring", 
-          tdep = "utc_deployment", trecap = "utc_retrieval",
+f <- filt(pathF, pathM, metname, timezone, speedTresh = 22.222, gpst = "GPSType", 
+          ddep = "deployment", drecap = "recapture", colony = "colony", year = "year", 
+          ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
           BuffColony = 0.5, MinTripDur = 60, Complete = T, FixInt = 2, 
-          Interpolate = T, splt = F)
+          Interpolate = T, filtNA = 1, splt = F)
 
-filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap = NULL,
-                 colony = NULL, year = NULL, ring = NULL, tdep = NULL, trecap = NULL, 
-                 timezone = NULL, speedTresh = NULL, FixInt = NULL, 
+filt <- function(pathF = ..., pathM = ..., metname = NULL, gpst = NULL, ddep = NULL, 
+                 drecap = NULL, colony = NULL, year = NULL, ring = NULL, tdep = NULL, 
+                 trecap = NULL, timezone = NULL, speedTresh = NULL, FixInt = NULL, 
                  BuffColony = NULL, MinTripDur = NULL, Complete = FALSE,
-                 Interpolate = FALSE, splt = TRUE) {
+                 Interpolate = FALSE, filtNA = 1, splt = TRUE) {
 
   if (class(metname) != "character") 
     stop("metname should be a character")
+  if (class(gpst) != "character") 
+    stop("gpst should be a character")
   if (class(ddep) != "character") 
     stop("ddep should be a character")
   if (class(drecap) != "character") 
@@ -69,6 +66,10 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
     stop("Logical: Completness function should be approved (TRUE) or delcine (FALSE)")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
     stop("the time interval between successive fixes should be numeric")
+  if (class(filtNA) != "numeric" | c(filtNA < 0 | filtNA > 1))
+    stop("filtering NAs induced by interpolation needs a proportion as treshold; 0-1")
+  
+
 
   pack <- c("chron", "adehabitatHR", "plyr", "trip", "lubridate")
   
@@ -104,8 +105,8 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
     
   ## Partitionning between two types of GPS-based file
   ## Need to have a column specifying GPS type in the metadata file
-  GPSType <- metafile$GPSType[which(metafile$ID == gsub(".csv", "", file.name[i]))]
-  if(identical(GPSType, character(0))) {stop("You need to have a valid GPSType. See details")}
+  GPSType <- metafile[, gpst][which(metafile$ID == gsub(".csv", "", file.name[i]))]
+  if(identical(GPSType, character(0))) {stop("You need to have a valid GPS type. Referring to gpst")}
   
   ## This line remove the 6 first unecassary lines in the CHIP-PATCH GPS Type
   ## The 1GEN is read as it is
@@ -149,7 +150,7 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   bird$Date <- format(mdy, "%Y/%m/%d")
   bird$Time <- chron(times=bird$Time)
   bird$datetime <- strptime(paste(gsub("/", "-", bird$Date), bird$Time), format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
-  bird <- bird[order(bird$datetime , decreasing = FALSE ),]
+  bird <- bird[order(bird$datetime , decreasing = FALSE ),] ## assuring the chronological order of fixes
   
   ## now subset to points within this time start/end window
   bird <- bird[bird$datetime %within% int, ]
@@ -180,11 +181,15 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
     Nbird <- as.ltraj(xy = data.frame(bird$Longitude, bird$Latitude), date = as.POSIXct(bird$datetime), id = bird$trackID)
     wost_NA <- setNA(Nbird,refda,Mres,units="min")
     wost_demo <- sett0(wost_NA,refda,Mres,units="min")
-    Nbird <- redisltraj(na.omit(wost_demo), u = Sres, type = "time") 
-  
+    Nbird <- redisltraj(na.omit(wost_demo), u = Sres, type = "time")
+    Nbird[[1]]$nbNA <- ifelse(Nbird[[1]]$x %in% wost_demo[[1]]$x, 0, 1)
+    
+    tmpN <- ld(Nbird)
+    Nbird <- as.ltraj(xy = data.frame(tmpN$x, tmpN$y), date = as.POSIXct(tmpN$date), id = tmpN$id, infolocs = tmpN[, c(11, 12)])
+    
     if(!is.null(FixInt)) {
      if(nrow(Nbird[[1]]) > 1){ ### Standardized as matter of time treshold
-      if(Sres != FixInt) {
+      if(Mres != FixInt) {
        if( FixInt < max(metafile$FIX, na.rm = TRUE)  ) stop("your selected treshold for ", print(bird$trackID[1]), " is smaller than the greater interval in your sampled tracks - meaning that your are creating points")
         Nbird <- subsample(Nbird, FixInt, units = c("min"))
        }
@@ -192,9 +197,9 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
      }
     
     Nbird <- ld(Nbird)
-    bird <- data.frame(datetime = Nbird$date, Latitude = Nbird$y, Longitude = Nbird$x, trackID = Nbird$id)
+    bird <- data.frame(datetime = Nbird$date, Latitude = Nbird$y, Longitude = Nbird$x, trackID = Nbird$id, nbNA = Nbird$nbNA)
     
-    } else { bird <- bird[, c("datetime", "Latitude", "Longitude", "trackID")] }
+    } else { bird <- bird[, c("datetime", "Latitude", "Longitude", "trackID")]; bird$nbNA <- 0 }
   
   ## get distance flown from the colony
   trip.matrix <- data.matrix(bird[,c("Longitude","Latitude")], rownames.force = NA) #creates two column matrix of lat and long for trip trackDistance function
@@ -257,13 +262,15 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
     
     trip.matrix <- data.matrix(test[,c("Longitude","Latitude")], rownames.force = NA) #creates two column matrix of lat and long for trip trackDistance function
     distbp <- trackDistance(trip.matrix, longlat = TRUE) #calculates distance between each GPS point, into vector
-    TDist <- sum(distbp)   
+    TDist <- sum(distbp) ## Total distance travelled per trip (m)
     test$TripDist <- TDist
     
     tripDurs <- as.data.frame(table(test$birdTrip))
-    test$nPoints <- tripDurs$Freq[match(test$birdTrip, tripDurs$Var1)]
-    test$maxDist <- max(test$ColonyDist, na.rm = TRUE)
+    test$nPoints <- tripDurs$Freq[match(test$birdTrip, tripDurs$Var1)] ## Nb of points per trips
+    test$maxDist <- max(test$ColonyDist, na.rm = TRUE) ## Calculating maximum distance per trip
     
+    test$propNA <- sum(test$nbNA)/length(test$nbNA) ## Proportion of interpolated NAs for each trip
+      
     ## Calculation of the proportion of points over land
     ## Would require a appropriate shapefile for the calculation
     #pts <- SpatialPointsDataFrame(test[,c("Longitude", "Latitude")], test,proj4string=crdref)
@@ -296,6 +303,10 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, ddep = NULL, drecap =
   
       if (!is.null(MinTripDur)) {
   alltrips <- subset(alltrips, alltrips$TripLength >= MinTripDur)
+    }
+  
+  if (!is.null(filtNA)) {
+  alltrips <- subset(alltrips, alltrips$propNA <= filtNA)
     }
   
     ## Adding some data

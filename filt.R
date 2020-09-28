@@ -22,11 +22,11 @@ timezone <- c("GMT")
 ## need slots for colony, deployement, recapture, utc_recap, utc_dep, year, ring,
 ## longitude, latitude
 
-f <- filt(pathF, pathM, metname, timezone, speedTresh = 22.222, gpst = "GPSType", 
+f <- filt(pathF, pathM, metname, timezone, speedTresh = 25, gpst = "GPSType", 
           ddep = "deployment", drecap = "recapture", colony = "colony", year = "year", 
           ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
           BuffColony = 0.5, MinTripDur = 60, Complete = T, FixInt = 2, 
-          Interpolate = T, filtNA = 1, splt = F)
+          Interpolate = T, filtNA = 0.8, splt = F)
 
 filt <- function(pathF = ..., pathM = ..., metname = NULL, gpst = NULL, ddep = NULL, 
                  drecap = NULL, colony = NULL, year = NULL, ring = NULL, tdep = NULL, 

@@ -22,17 +22,15 @@ param <- seq(0.05, 1, by = 0.05)
 ## need slots for colony, deployement, recapture, utc_recap, utc_dep, year, ring,
 ## longitude, latitude
 
-sc <- sensCol(pathF, pathM, metname, timezone, param = param, speedTresh = 25, gpst = "GPSType", 
-          ddep = "deployment", drecap = "recapture", colony = "colony", year = "year", 
-          ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
-          BuffColony = 0.5, MinTripDur = 60, Complete = T, FixInt = 2, 
-          Interpolate = T, filtNA = 0.8, splt = F)
+sc <- sensCol(pathF, pathM, metname, timezone, iter = 50, param = param, speedTresh = 25, 
+          gpst = "GPSType", ddep = "deployment", drecap = "recapture", colony = "colony", 
+          year = "year", ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
+          FixInt = 2, Interpolate = T, filtNA = 0.8)
 
-sensCol <- function(pathF = ..., pathM = ..., metname = NULL, param = NULL, gpst = NULL, ddep = NULL, 
-                 drecap = NULL, colony = NULL, year = NULL, ring = NULL, tdep = NULL, 
-                 trecap = NULL, timezone = NULL, speedTresh = NULL, FixInt = NULL, 
-                 BuffColony = NULL, MinTripDur = NULL, Complete = FALSE,
-                 Interpolate = FALSE, filtNA = 1, splt = TRUE) {
+sensCol <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param = NULL, 
+                 gpst = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
+                 ring = NULL, tdep = NULL, trecap = NULL, timezone = NULL, speedTresh = NULL, 
+                 FixInt = NULL, Interpolate = FALSE, filtNA = 1) {
   
   if (class(metname) != "character") 
     stop("metname should be a character")
@@ -60,18 +58,19 @@ sensCol <- function(pathF = ..., pathM = ..., metname = NULL, param = NULL, gpst
     stop("the speed treshold should be numeric")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
     stop("the time interval between successive fixes should be numeric")
-  if (!is.null(BuffColony) & class(BuffColony) != "numeric") 
-    stop("the buffer size should be numeric")
-  if (!is.null(MinTripDur) & class(MinTripDur) != "numeric") 
-    stop("the minimum time duration (min) that a trip should have should be numeric")
-  if (Complete != TRUE & Complete != FALSE)
-    stop("Logical: Completness function should be approved (TRUE) or delcine (FALSE)")
+  # if (!is.null(BuffColony) & class(BuffColony) != "numeric") 
+  #   stop("the buffer size should be numeric")
+  # if (!is.null(MinTripDur) & class(MinTripDur) != "numeric") 
+  #   stop("the minimum time duration (min) that a trip should have should be numeric")
+  # if (Complete != TRUE & Complete != FALSE)
+  #   stop("Logical: Completness function should be approved (TRUE) or delcine (FALSE)")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
     stop("the time interval between successive fixes should be numeric")
   if (class(filtNA) != "numeric" | c(filtNA < 0 | filtNA > 1))
     stop("filtering NAs induced by interpolation needs a proportion as treshold; 0-1")
   
-  pack <- c("chron", "adehabitatHR", "plyr", "trip", "lubridate", "gridExtra", "reshape2", "ggplot2", "Hmisc")
+  pack <- c("chron", "adehabitatHR", "plyr", "trip", "lubridate", "gridExtra", "reshape2", 
+            "ggplot2", "Hmisc")
   
   if (length(setdiff(pack, rownames(installed.packages()))) > 0) {
     install.packages(setdiff(pack, rownames(installed.packages())))  
@@ -100,13 +99,13 @@ sensCol <- function(pathF = ..., pathM = ..., metname = NULL, param = NULL, gpst
     stop('Date of retrieval should be later than date of deployment')
   
   scol.list <- list()
-  
+  arS <- list()
 
 for (i in 1:length(param)) {
   
   p <- param[i]
   
-   for (f in 1:length(files)) {
+   for (f in 1:iter) {
     
    r <- sample(1:files, 1)
   
@@ -213,11 +212,6 @@ for (i in 1:length(param)) {
    between.point.distances <- trackDistance(trip.matrix, longlat = TRUE) #calculate distance in km between each GPS point, into vector
    bird$PointDist <- c(0, between.point.distances) #dist in km
    
-   if(is.null(BuffColony)) {
-     bird$ColonyorTrip <- c("trip")
-     bird$tripID <- 1
-   } else {
-     
      ## Setting buffer treshold
      bird$ColonyorTrip <- ifelse(bird$ColonyDist > p, "trip","colony") #in km
      
@@ -248,7 +242,6 @@ for (i in 1:length(param)) {
          bird$tripID[nRows+1] <- tripID ## set the last row correctly
        }
      }
-   }
   
    ## Creating unique ID variable
    bird$birdTrip <- paste(bird$trackID, bird$tripID, sep = "_")
@@ -256,26 +249,25 @@ for (i in 1:length(param)) {
    ## Getting rid of colony points; perhaps YES or NO in the function()
    bird <- subset(bird, bird$tripID > 0)
     
-  nnotime <- bird[, c("birdTrip", "ColonyDist","ColonyorTrip")]
+  # notime <- bird[, c("birdTrip", "ColonyDist","ColonyorTrip")]
+  # 
+  # trip.Bincomplete <- ddply(notime, .(birdTrip), function(x) x[1, ]) ## gets the first point for each trip
+  # colnames(trip.Bincomplete) <- c("birdTrip", "ColonyDist", "FR")
+  # trip.Eincomplete <- ddply(notime, .(birdTrip), function(x) x[nrow(x), ]) ## gets the last point for each trip
+  # colnames(trip.Eincomplete) <- c("birdTrip", "ColonyDist", "ER")
+  # 
+  # bird$BegPoint <- trip.Bincomplete$FR[match(bird$birdTrip, trip.Bincomplete$birdTrip)]
+  # bird$EndPoint <- trip.Eincomplete$ER[match(bird$birdTrip, trip.Eincomplete$birdTrip)]
   
-  trip.Bincomplete <- ddply(notime, .(birdTrip), function(x) x[1, ]) ## gets the first point for each trip
-  colnames(trip.Bincomplete) <- c("birdTrip", "ColonyDist", "FR")
-  trip.Eincomplete <- ddply(notime, .(birdTrip), function(x) x[nrow(x), ]) ## gets the last point for each trip
-  colnames(trip.Eincomplete) <- c("birdTrip", "ColonyDist", "ER")
+  # if ( Complete == TRUE ) { # get rid of incomplete trips
+  #   bird <- subset(bird, bird$BegPoint == "colony")  
+  #   bird <- subset(bird, bird$EndPoint == "colony")
+  # }
   
-  bird$BegPoint <- trip.Bincomplete$FR[match(bird$birdTrip, trip.Bincomplete$birdTrip)]
-  bird$EndPoint <- trip.Eincomplete$ER[match(bird$birdTrip, trip.Eincomplete$birdTrip)]
+  # if (!is.null(filtNA)) {
+  #   bird <- subset(bird, bird$propNA <= filtNA)
+  # }
   
-  if ( Complete == TRUE ) { # get rid of incomplete trips
-    bird <- subset(bird, bird$BegPoint == "colony")  
-    bird <- subset(bird, bird$EndPoint == "colony")
-  }
-  
-  if (!is.null(filtNA)) {
-    bird <- subset(bird, bird$propNA <= filtNA)
-  }
-  
-
   lall <- bird[!duplicated(bird$birdTrip),]
   lall$nbTrips <- length(unique(lall$birdTrip))
   lall <- lall[!duplicated(lall$trackID),]
@@ -295,29 +287,20 @@ arS[[i]] <- allbirds
 rm(allbirds)
 
   }
-}
-
-
-
 
 d <- do.call(rbind, arS)
 d$Scenario <- as.numeric(d$Scenario)
-p1 <- ggplot(d,aes(x = Scenario, y = nbTrips)) + 
-  stat_summary(fun.data = "mean_cl_boot") +
-  stat_summary(fun.y = mean, geom = "line") + theme_bw() + 
-  theme(axis.title.x=element_blank(), axis.title.y=element_blank()) +
-  geom_vline(xintercept = 200, alpha = 0.1, col = "blue", size = 5)
-  
-ggdf <- ggplot_build(p1)
-gdf <- ggdf$data[[1]]
+p1 <- ggplot(d,aes(x = Scenario, y = nbTrips)) + stat_summary(fun = mean, geom = "line")
+
+gdf <- ggplot_build(p1)$data[[1]]
 df <- gdf[, c(1, 3)]
 colnames(df) <- c("Scenario", "Mean")
 
 l <- list()
 y <- unique(df$Scenario)
 x <- nrow(df)
-C <- rep(NA, 20)
-Ci <- rep(NA, 19)
+C <- rep(NA, nrow(df))
+Ci <- rep(NA, nrow(df)-1)
 val <- NULL
 
   for (i in 2:nrow(df)){
@@ -328,14 +311,27 @@ val <- NULL
     Ci[i] <- abs(C[i + 1] - C[i])
   }
   
-  Ci[20] <- NA
-  df[, 3] <- Ci 
+  Ci[nrow(df)] <- NA
+  df$SORC <- Ci 
 
-p2 <- ggplot(df, aes(x = Scenario, y = V3)) +
+  df[,4] <- df$SORC < max(df$Mean)*0.05
+  tresh <- df$Scenario[which(df$V4 == TRUE)[1]]
+  
+p2 <- ggplot(d,aes(x = Scenario, y = nbTrips)) + 
+    stat_summary(fun.data = "mean_cl_boot") +
+    stat_summary(fun = mean, geom = "line") + theme_bw() + 
+    theme(axis.title.x=element_blank(), axis.title.y=element_blank()) +
+    geom_vline(xintercept = tresh, alpha = 0.1, col = "blue", size = 5)
+  
+p3 <- ggplot(df, aes(x = Scenario, y = SORC)) +
   geom_point() + geom_line() + theme_bw() + theme(legend.position = "none", 
     axis.title.x=element_blank(), axis.title.y=element_blank()) +
-  geom_vline(xintercept = 200, alpha = 0.1, col = "blue", size = 5)
+  geom_vline(xintercept = tresh, alpha = 0.1, col = "blue", size = 5)
   
-g <- grid.arrange(p1, p2, ncol=2,left = "Number of trips per individual", bottom = "Scenario (m)")
-#setwd("C:/Users/philip/OneDrive/RissaProject/TRACKS/FinalFigure/ChpII")
-ggsave(g, filename = "arS_ki.png", bg = "transparent", width = 14, height = 8, units = "cm")                     
+g <- suppressWarnings(grid.arrange(p2, p3, ncol=2,left = "Number of trips per individual", bottom = "Scenario (m)"))
+      
+rlist <- list("detSens" = d[, c(4:5, 11, 13)], "detSORC" = df[, c(1:3)], fig = g)
+
+return(rlist)            
+
+}             

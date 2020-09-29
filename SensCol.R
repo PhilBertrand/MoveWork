@@ -13,7 +13,7 @@
 #### @timezone is the time zone of your GPS file and metadata
 #### @return allbirds, all trips delineated according to certain filters
 
-pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/test/")
+pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/kit/")
 pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/metadata/")
 metname <- c("meta_bjorn.csv")
 timezone <- c("GMT")
@@ -22,10 +22,10 @@ param <- seq(0.05, 1, by = 0.05)
 ## need slots for colony, deployement, recapture, utc_recap, utc_dep, year, ring,
 ## longitude, latitude
 
-sc <- sensCol(pathF, pathM, metname, timezone, iter = 50, param = param, speedTresh = 25, 
+sc <- sensCol(pathF, pathM, metname, timezone, iter = 300, param = param, speedTresh = 25, 
           gpst = "GPSType", ddep = "deployment", drecap = "recapture", colony = "colony", 
           year = "year", ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
-          FixInt = 2, Interpolate = T, filtNA = 0.8)
+          FixInt = 2, Interpolate = T, filtNA = 1)
 
 sensCol <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param = NULL, 
                  gpst = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
@@ -330,7 +330,7 @@ p3 <- ggplot(df, aes(x = Scenario, y = SORC)) +
   
 g <- suppressWarnings(grid.arrange(p2, p3, ncol=2,left = "Number of trips per individual", bottom = "Scenario (m)"))
       
-rlist <- list("detSens" = d[, c(4:5, 11, 13)], "detSORC" = df[, c(1:3)], fig = g)
+rlist <- suppressWarnings(list("detSens" = d[, c(4:5, 11, 13)], "detSORC" = df[, c(1:3)], fig = g))
 
 return(rlist)            
 

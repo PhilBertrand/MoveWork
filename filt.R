@@ -1,6 +1,31 @@
-###########################################################################
-####################### Track filtering and numbered ######################
-###########################################################################
+#' Delineating movement trips for central-place foraging species
+#'
+#' This function was developped to conveniently delineate trips from raw GPS data for 
+#' central-place foraging species. It also includes various "filtering" options to segment trips
+#' @param pathF Do you love cats? Defaults to TRUE.
+#' @param pathM
+#' @param metname
+#' @param timezone
+#' @param gpst
+#' @param ddep
+#' @param drecap
+#' @param colony
+#' @param year
+#' @param ring
+#' @param tdep
+#' @param trecap
+#' @param speedTresh
+#' @param FixInt
+#' @param BuffColony
+#' @param MinTripDur
+#' @param Complete
+#' @param Interpolate
+#' @param filtNA
+#' @param splt
+#' @keywords trips movement central-place forager cpf delineating colony
+#' @export
+#' @examples
+#' filt()
 
 #### Produced by Philip Bertrand, PhD Candidate
 #### SEAPOP movement data

@@ -25,12 +25,12 @@ param <- seq(0.05, 1, by = 0.05)
 sc <- sensCol(pathF, pathM, metname, timezone, iter = 300, param = param, speedTresh = 25, 
           gpst = "GPSType", ddep = "deployment", drecap = "recapture", colony = "colony", 
           year = "year", ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
-          FixInt = 2, Interpolate = T, filtNA = 1)
+          FixInt = 2, Interpolate = T)
 
 sensCol <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param = NULL, 
                  gpst = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
                  ring = NULL, tdep = NULL, trecap = NULL, timezone = NULL, speedTresh = NULL, 
-                 FixInt = NULL, Interpolate = FALSE, filtNA = 1) {
+                 FixInt = NULL, Interpolate = FALSE) {
   
   if (class(metname) != "character") 
     stop("metname should be a character")
@@ -249,25 +249,6 @@ for (i in 1:length(param)) {
    ## Getting rid of colony points; perhaps YES or NO in the function()
    bird <- subset(bird, bird$tripID > 0)
     
-  # notime <- bird[, c("birdTrip", "ColonyDist","ColonyorTrip")]
-  # 
-  # trip.Bincomplete <- ddply(notime, .(birdTrip), function(x) x[1, ]) ## gets the first point for each trip
-  # colnames(trip.Bincomplete) <- c("birdTrip", "ColonyDist", "FR")
-  # trip.Eincomplete <- ddply(notime, .(birdTrip), function(x) x[nrow(x), ]) ## gets the last point for each trip
-  # colnames(trip.Eincomplete) <- c("birdTrip", "ColonyDist", "ER")
-  # 
-  # bird$BegPoint <- trip.Bincomplete$FR[match(bird$birdTrip, trip.Bincomplete$birdTrip)]
-  # bird$EndPoint <- trip.Eincomplete$ER[match(bird$birdTrip, trip.Eincomplete$birdTrip)]
-  
-  # if ( Complete == TRUE ) { # get rid of incomplete trips
-  #   bird <- subset(bird, bird$BegPoint == "colony")  
-  #   bird <- subset(bird, bird$EndPoint == "colony")
-  # }
-  
-  # if (!is.null(filtNA)) {
-  #   bird <- subset(bird, bird$propNA <= filtNA)
-  # }
-  
   lall <- bird[!duplicated(bird$birdTrip),]
   lall$nbTrips <- length(unique(lall$birdTrip))
   lall <- lall[!duplicated(lall$trackID),]

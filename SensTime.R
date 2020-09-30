@@ -13,7 +13,7 @@
 #### @timezone is the time zone of your GPS file and metadata
 #### @return allbirds, all trips delineated according to certain filters
 
-pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/test/")
+pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/kit/")
 pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/metadata/")
 metname <- c("meta_bjorn.csv")
 timezone <- c("GMT")
@@ -22,13 +22,13 @@ param <- seq(1, 10, by = 1)
 ## need slots for colony, deployement, recapture, utc_recap, utc_dep, year, ring,
 ## longitude, latitude
 
-sc <- sensTime(pathF, pathM, metname, timezone, iter = 300, param = param, speedTresh = 25, 
+st <- sensTime(pathF, pathM, metname, timezone, iter = 300, param = param, speedTresh = 25, 
               gpst = "GPSType", ddep = "deployment", drecap = "recapture", colony = "colony", 
-              year = "year", ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
+              year = "year", ring = "ring", FIX = "FIX", tdep = "utc_deployment", trecap = "utc_retrieval",
               BuffColony = 0.2, FixInt = 2, Interpolate = T)
 
 sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param = NULL, 
-                    gpst = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
+                    gpst = NULL, FIX = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
                     ring = NULL, tdep = NULL, trecap = NULL, timezone = NULL, speedTresh = NULL, 
                     BuffColony = NULL, FixInt = NULL, Interpolate = FALSE) {
   
@@ -54,6 +54,8 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
     stop("trecap should be a character")
   if (class(timezone) != "character") 
     stop("the timezone should be a character")
+  if (class(FIX) != "character") 
+    stop("the FIX should be a character")
   if (!is.null(speedTresh) & class(speedTresh) != "numeric") 
     stop("the speed treshold should be numeric")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
@@ -62,8 +64,8 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
     stop("the buffer size should be numeric")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
     stop("the time interval between successive fixes should be numeric")
-  if (class(filtNA) != "numeric" | c(filtNA < 0 | filtNA > 1))
-    stop("filtering NAs induced by interpolation needs a proportion as treshold; 0-1")
+  # if (class(filtNA) != "numeric" | c(filtNA < 0 | filtNA > 1))
+  #   stop("filtering NAs induced by interpolation needs a proportion as treshold; 0-1")
   
   pack <- c("chron", "adehabitatHR", "plyr", "trip", "lubridate", "gridExtra", "reshape2", 
             "ggplot2", "Hmisc")
@@ -173,8 +175,8 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
       }
       
       ## Extracting GPS interval, determined from the metadata
-      Sres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[r]))])*60
-      Mres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[r]))])
+      Sres <- (metafile[, FIX][which(metafile$ID == gsub(".csv","",file.name[i]))])*60
+      Mres <- (metafile[, FIX][which(metafile$ID == gsub(".csv","",file.name[i]))])
       
       if(Interpolate == TRUE) {
         
@@ -265,9 +267,9 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
       ## Removing trip with the scenario
       alltrips <- subset(alltrips, alltrips$TripLength > p)
       
-      if (!is.null(filtNA)) {
-        alltrips <- subset(alltrips, alltrips$propNA <= filtNA)
-      }
+      # if (!is.null(filtNA)) {
+      #   alltrips <- subset(alltrips, alltrips$propNA <= filtNA)
+      # }
       
       lall <- alltrips[!duplicated(alltrips$birdTrip),]
       lall$nbTrips <- length(unique(lall$birdTrip))
@@ -276,7 +278,7 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
       
       stime.list[[f]] <- lall # put all of these cut down frames in a list
       rm(alltrips)
-      allbirds <- do.call(rbind, scol.list) # convert the list into one big dataframe
+      allbirds <- do.call(rbind, stime.list) # convert the list into one big dataframe
       
       cat("nRep =", f, "\n")
       
@@ -289,7 +291,7 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
     
   }
   
-  d <- do.call(rbind, arS)
+  d <- do.call(rbind, arT)
   d$Scenario <- as.numeric(d$Scenario)
   p1 <- ggplot(d,aes(x = Scenario, y = nbTrips)) + stat_summary(fun = mean, geom = "line")
   
@@ -335,4 +337,5 @@ sensTime <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param 
   
   return(rlist)            
   
-}   
+  }
+

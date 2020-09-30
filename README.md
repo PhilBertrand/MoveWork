@@ -1,2 +1,2 @@
-# CPFMove
-Functions facilitating movement trips segmentation for central place forager species
+# MoveWork
+Working area for feeding CPFMove functions

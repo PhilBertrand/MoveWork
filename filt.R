@@ -2,60 +2,48 @@
 #'
 #' This function was developped to conveniently delineate trips from raw GPS data for 
 #' central-place foraging species. It also includes various "filtering" options to segment trips
-#' @param pathF Do you love cats? Defaults to TRUE.
-#' @param pathM
-#' @param metname
-#' @param timezone
-#' @param gpst
-#' @param ddep
-#' @param drecap
-#' @param colony
-#' @param year
-#' @param ring
-#' @param tdep
-#' @param trecap
-#' @param speedTresh
-#' @param FixInt
-#' @param BuffColony
-#' @param MinTripDur
-#' @param Complete
-#' @param Interpolate
-#' @param filtNA
-#' @param splt
+#' @param pathF path leading to your tracks (.csv)
+#' @param pathM path leading to your metadata file
+#' @param metname a character string corresponding to the metadata file's name 
+#' @param timezone time zone in which data are recorded
+#' @param gpst a character string corresponding to the metadata's column name containing the GPS type 
+#' @param ddep a character string corresponding to the metadata's column name containing the date of departure
+#' @param drecap a character string corresponding to the metadata's column name containing the date of retrieval
+#' @param colony a character string corresponding to the metadata's column name containing individual colony attribution
+#' @param year a character string corresponding to the metadata's column name containing the year of sampling
+#' @param ring a character string corresponding to the metadata's column name containing the individual ring number
+#' @param tdep a character string corresponding to the metadata's column name containing the time of departure
+#' @param trecap a character string corresponding to the metadata's column name containing the time of retrieval
+#' @param speedTresh numeric treshold used as speed cutoff for speed filtering (m/s)
+#' @param FIX a character string corresponding to the metadata's column name containing the numeric interval separating two 
+#' locations in the GPS track 
+#' @param FixInt numeric interval that should separate two locations in GPS tracks for interpolation (minutes; e.g. 2, 10)
+#' @param BuffColony numeric value indicating the buffer radius length around the colony (km)
+#' @param MinTripDur numeric value used for filtering trip by minimum trip duration (minutes)
+#' @param Complete logical; if TRUE, only complete trip will be kept
+#' @param Interpolate logical; if TRUE, tracks are interpolated
+#' @param filtNA numeric value which correspond of the filtering treshold for number of NAs generated along the 
+#' interpolation. Between 0 and 1, whereas 1 correspond to no filtration at all (filtering only trips that are 100% full of NAs)
+#' @param splt logical; if TRUE, the final trips are ordered as a list instead of an unique data frame. Default FALSE
 #' @keywords trips movement central-place forager cpf delineating colony
 #' @export
-#' @examples
+#' @examples 
+#' 
+#' pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/allspecies/")
+#' pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/metadata/")
+#' metname <- c("meta_bjorn.csv")
+#' timezone <- c("GMT")
+#' 
+#' f <- filt(pathF, pathM, metname, timezone, speedTresh = 22.222, gpst = "GPSType", 
+#' ddep = "deployment", drecap = "recapture", colony = "colony", year = "year", 
+#' ring = "ring", FIX = "FIX", tdep = "utc_deployment", trecap = "utc_retrieval",
+#' BuffColony = 0.5, MinTripDur = 60, Complete = T, FixInt = 2, 
+#' Interpolate = T, filtNA = 1, splt = F)
 #' filt()
-
-#### Produced by Philip Bertrand, PhD Candidate
-#### SEAPOP movement data
-#### Depends: chron, adehabitatHR, plyr, trip
-#### Version: 1.0
-#### Raw data are expected to be in .csv format
-#### @pathF is the path to your tracks
-#### @pathM is the path to your metadata file
-#### @metname is the name of your metadata file
-#### @timezone is the time zone of your GPS file and metadata
-#### @return allbirds, all trips delineated according to certain filters
-
-pathF <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/files/allspecies/")
-pathM <- c("C:/Users/philip/OneDrive/NP_Kontrakt/StromTracks/metadata/")
-metname <- c("meta_bjorn.csv")
-timezone <- c("GMT")
-
-
-## need slots for colony, deployement, recapture, utc_recap, utc_dep, year, ring,
-## longitude, latitude
-
-f <- filt(pathF, pathM, metname, timezone, speedTresh = 22.222, gpst = "GPSType", 
-          ddep = "deployment", drecap = "recapture", colony = "colony", year = "year", 
-          ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
-          BuffColony = 0.5, MinTripDur = 60, Complete = T, FixInt = 2, 
-          Interpolate = T, filtNA = 1, splt = F)
 
 filt <- function(pathF = ..., pathM = ..., metname = NULL, gpst = NULL, ddep = NULL, 
                  drecap = NULL, colony = NULL, year = NULL, ring = NULL, tdep = NULL, 
-                 trecap = NULL, timezone = NULL, speedTresh = NULL, FixInt = NULL, 
+                 trecap = NULL, timezone = NULL, speedTresh = NULL, FIX = NULL, FixInt = NULL, 
                  BuffColony = NULL, MinTripDur = NULL, Complete = FALSE,
                  Interpolate = FALSE, filtNA = 1, splt = TRUE) {
 
@@ -79,6 +67,8 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, gpst = NULL, ddep = N
     stop("trecap should be a character")
   if (class(timezone) != "character") 
     stop("the timezone should be a character")
+  if (class(FIX) != "character") 
+    stop("the FIX should be a character")
   if (!is.null(speedTresh) & class(speedTresh) != "numeric") 
     stop("the speed treshold should be numeric")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
@@ -197,8 +187,8 @@ filt <- function(pathF = ..., pathM = ..., metname = NULL, gpst = NULL, ddep = N
     }
   
   ## Extracting GPS interval, determined from the metadata
-  Sres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[i]))])*60
-  Mres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[i]))])
+  Sres <- (metafile[, FIX][which(metafile$ID == gsub(".csv","",file.name[i]))])*60
+  Mres <- (metafile[, FIX][which(metafile$ID == gsub(".csv","",file.name[i]))])
   
   if(Interpolate == TRUE) {
     

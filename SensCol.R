@@ -24,11 +24,11 @@ param <- seq(0.05, 1, by = 0.05)
 
 sc <- sensCol(pathF, pathM, metname, timezone, iter = 300, param = param, speedTresh = 25, 
           gpst = "GPSType", ddep = "deployment", drecap = "recapture", colony = "colony", 
-          year = "year", ring = "ring", tdep = "utc_deployment", trecap = "utc_retrieval",
+          year = "year", ring = "ring", FIX = "FIX", tdep = "utc_deployment", trecap = "utc_retrieval",
           FixInt = 2, Interpolate = T)
 
 sensCol <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param = NULL, 
-                 gpst = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
+                 gpst = NULL, FIX = NULL, ddep = NULL, drecap = NULL, colony = NULL, year = NULL,
                  ring = NULL, tdep = NULL, trecap = NULL, timezone = NULL, speedTresh = NULL, 
                  FixInt = NULL, Interpolate = FALSE) {
   
@@ -54,6 +54,8 @@ sensCol <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param =
     stop("trecap should be a character")
   if (class(timezone) != "character") 
     stop("the timezone should be a character")
+  if (class(FIX) != "character") 
+    stop("the FIX should be a character")
   if (!is.null(speedTresh) & class(speedTresh) != "numeric") 
     stop("the speed treshold should be numeric")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
@@ -66,8 +68,8 @@ sensCol <- function(pathF = ..., pathM = ..., iter = 50, metname = NULL, param =
   #   stop("Logical: Completness function should be approved (TRUE) or delcine (FALSE)")
   if (!is.null(FixInt) & class(FixInt) != "numeric") 
     stop("the time interval between successive fixes should be numeric")
-  if (class(filtNA) != "numeric" | c(filtNA < 0 | filtNA > 1))
-    stop("filtering NAs induced by interpolation needs a proportion as treshold; 0-1")
+  # if (class(filtNA) != "numeric" | c(filtNA < 0 | filtNA > 1))
+  #   stop("filtering NAs induced by interpolation needs a proportion as treshold; 0-1")
   
   pack <- c("chron", "adehabitatHR", "plyr", "trip", "lubridate", "gridExtra", "reshape2", 
             "ggplot2", "Hmisc")
@@ -177,8 +179,8 @@ for (i in 1:length(param)) {
    }
    
    ## Extracting GPS interval, determined from the metadata
-   Sres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[r]))])*60
-   Mres <- (metafile$FIX[which(metafile$ID == gsub(".csv","",file.name[r]))])
+   Sres <- (metafile[, FIX][which(metafile$ID == gsub(".csv","",file.name[i]))])*60
+   Mres <- (metafile[, FIX][which(metafile$ID == gsub(".csv","",file.name[i]))])
   
    if(Interpolate == TRUE) {
      
